@@ -6,3 +6,4 @@ download [an existing Youtube video](https://www.youtube.com/watch?v=psmZRfiXYnE
 the documentation on Dockerhub to understand how to use the image!
 
 1. Download the given video using the YoutubeDL Docker image in the following path locally: `/workspace/exercise_3`
+
