@@ -13,3 +13,4 @@ spark = SparkSession.builder.config(conf=conf).getOrCreate()
 
 df = spark.read.csv(f"s3a://{BUCKET}/{KEY}", header=True)
 df.show()
+
