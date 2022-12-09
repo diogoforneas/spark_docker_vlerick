@@ -14,4 +14,4 @@ RUN python -m pip install -r requirements.txt
 #Define the ommand to be run when the container is started 
 EXPOSE 8080
 ENTRYPOINT ["python"]
-CMD ["main.py"]
+CMD ["imdb_score.py"]
