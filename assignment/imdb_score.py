@@ -181,12 +181,7 @@ df = df.drop(["num_critic_for_reviews", "gross", "num_voted_users", "num_user_fo
 
 #Binning the IMDB scores as 0-2,2-4,4-6,6-8,8-10 to classify them accordingly as Very Bad
 #Bad, Average, Good, Very Good. This will be my target variable and I will be using Classification models.
-df["imdb_score_binned"]= pd.cut(df["imdb_score"], bins=[0, 2, 4, 6, 8, 10], right=True, labels=False)+1
-
-
-#After doing this the imdb_score column can be dropped 
-df = df.drop(["imdb_score"], axis=1)
-
+df["imdb_score_binned"]= pd.cut(df["imdb_score"], bins=[0,4,6,8,10], right=True, labels=False)+1
 
 #Verifying the applied changes by looking into the first 10 rows 
 df.head(10)
@@ -233,19 +228,6 @@ X_test = sc_X.transform(X_test)
 
 # # Classification Models
 
-# ### Logistic Regression
-
-
-#Logistic Regression to predict Binned IMDB scores
-reg = LogisticRegression(class_weight = "balanced")
-# Train the model on training data
-reg.fit(X_train,np.ravel(y_train,order = "C"))
-#Make predictions of test
-reg_pred = reg.predict(X_test)
-
-print("The accuracy of the model is:",metrics.accuracy_score(y_test, reg_pred))
-
-
 # ### Decision Tree
 
 #Decision Tree to predict Binned IMDB scores
@@ -256,3 +238,12 @@ dt.fit(X_train, np.ravel(y_train,order="C"))
 dt_pred = dt.predict(X_test)
 
 print("The accuracy of the model is:",accuracy_score(y_test,dt_pred))
+
+
+
+#Step 4
+pred_values = spark.createDataFrame(dt_pred)
+
+#Step 5
+
+df.write.json("s3a://dmacademy-course-assets/vlerick/diogo")
