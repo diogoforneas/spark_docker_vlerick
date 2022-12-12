@@ -25,8 +25,8 @@ after_release.show()
 
 #Convert the Spark DataFrames to Pandas DataFrames.
 
-pre_data = pre_release.toPandas()
-after_data = after_release.toPandas()
+pre_df = pre_release.toPandas()
+after_df = after_release.toPandas()
 
 #Importing libraries that might be necessary
 import pandas as pd
@@ -43,20 +43,10 @@ from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier
 from sklearn.metrics import f1_score
-import xgboost as xgb
-
-#Reading the pre_release data and checking the first rows
-df = pd.read_csv('../data/pre_release.csv')
-df.head()
-
-
-#Reading the after_release data and checking the first rows
-df2 = pd.read_csv('../data/after_release.csv')
-df2.head()
 
 #Merging the two data frames based on the movie_title column as this will be necessary for our prediction
 #Checking the first few rows to see the effect of the merge
-df = pd.merge(df, df2, how='inner', on='movie_title')
+df = pd.merge(pre_df, after_df, how='inner', on='movie_title')
 df.head()
 
 #Checking the size of the dataset (number of rows and number of columns)
@@ -191,7 +181,7 @@ df = df.drop(["num_critic_for_reviews", "gross", "num_voted_users", "num_user_fo
 
 #Binning the IMDB scores as 0-2,2-4,4-6,6-8,8-10 to classify them accordingly as Very Bad
 #Bad, Average, Good, Very Good. This will be my target variable and I will be using Classification models.
-df["imdb_score_binned"]= pd.cut(df["imdb_score"], bins=[0,2,4,6,8,10], right=True, labels=False)+1
+df["imdb_score_binned"]= pd.cut(df["imdb_score"], bins=[0, 2, 4, 6, 8, 10], right=True, labels=False)+1
 
 
 #After doing this the imdb_score column can be dropped 
@@ -204,21 +194,6 @@ df.head(10)
 
 #Checking the value counts across the different bins created
 df["imdb_score_binned"].value_counts()
-
-
-#Creating a correlation matrix where it will be able to see the correlation between the different variables
-plt.figure(figsize=(15,7))
-matrix = df.corr().round(2)
-
-#Creating a mask so it only displays the lower portion of the matrix so it is easier to visualize
-mask = np.triu(np.ones_like(matrix, dtype=bool))
-
-#Making it a heatmap with a color scale so it is easier to identify which ones we will need to handle, this will 
-#happen when the value displayed between variables is above 0.7
-m = sns.heatmap(matrix, annot = True,vmax=1, vmin=-1, center=0, cmap='vlag', mask = mask);
-m.set_xticklabels(m.get_xticklabels(), rotation=45, horizontalalignment='right');
-plt.title("Correlation matrix", fontweight="bold");
-
 
 #Removing the actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes columns they are all correlated
 #between eachother and also highly correlated with the cast_total_facebook_likes
@@ -281,80 +256,3 @@ dt.fit(X_train, np.ravel(y_train,order="C"))
 dt_pred = dt.predict(X_test)
 
 print("The accuracy of the model is:",accuracy_score(y_test,dt_pred))
-
-
-# ### Random Forest
-
-#Random forest model to predict Binned IMDB scores
-from sklearn.ensemble import RandomForestClassifier
-from sklearn import tree
-from imblearn.ensemble import BalancedRandomForestClassifier
-
-
-#Seeing the influence of the accuracy on a larger random forest on both train and test set
-#Doing this by iterativly running a random forest with a higher number of estimators and max_depth
-train_accuracy = []
-test_accuracy = []
-highest_accuracy = 0
-best_estimators = 0
-best_max_depth = 0
-for i in range(10, 200,10):
-    train_accuracy_part = []
-    test_accuracy_part = []
-    for j in range(5, 50, 5):
-        #Train model with j depth
-        rf = BalancedRandomForestClassifier(n_estimators=i, max_depth=j)  
-        rf.fit(X_train,y_train)
-        #Make predictions + accuracy
-        y_predict_train = rf.predict(X_train)
-        train_acc = accuracy_score(y_train,y_predict_train)
-        rf_pred = rf.predict(X_test)
-        test_acc = accuracy_score(y_test,rf_pred)
-        train_accuracy_part.append(train_acc)
-        test_accuracy_part.append(test_acc)
-        if test_acc > highest_accuracy:
-            highest_accuracy = test_acc
-            best_estimators = i
-            best_max_depth = j
-    train_accuracy.append(train_accuracy_part)
-    test_accuracy.append(test_accuracy_part)
-print("Best n_estimators is", best_estimators,"and best max_depth is", best_max_depth,"with an accuracy:", highest_accuracy)
-
-
-# ### Model Comparison
-
-#Importing package for model comparison
-from sklearn.metrics import classification_report
-
-
-# #### Logistic Regression
-
-#Printing the classification report for the Logistic Regression
-print(classification_report(y_test, reg_pred))
-
-#Creating and printing Confusion matrix Logistic Regression
-print("\033[1m" + "Confusion Matrix Logistic Regression" + "\033[0m")
-cnf_matrix = metrics.confusion_matrix(y_test, reg_pred)
-print(cnf_matrix)
-
-
-# #### Decision Tree
-
-
-#Printing the classification report for the Decision Tree
-print(classification_report(y_test, dt_pred))
-#Creating and printing Confusion matrix Logistic Regression
-print("\033[1m" + "Confusion Matrix Decision Tree" + "\033[0m")
-cnf_matrix = metrics.confusion_matrix(y_test, dt_pred)
-print(cnf_matrix)
-
-
-# #### Balanced Random Forest
-
-
-#Printing the classification report for the Balanced Random Forest
-print(classification_report(y_test, rf_pred))
-#Creating and printing Confusion matrix Logistic Regression
-print("\033[1m" + "Confusion Matrix Balanced Random Forest" + "\033[0m")
-cnf_matrix = metrics.confusion_matrix(y_test, rf_pred)
-print(cnf_matrix)
