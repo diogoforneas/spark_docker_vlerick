@@ -1,5 +1,11 @@
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
+import pandas as pd
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score
+import numpy as np
 import os
 
 print(os.environ["AWS_SECRET_ACCESS_KEY"])
@@ -28,222 +34,98 @@ after_release.show()
 pre_df = pre_release.toPandas()
 after_df = after_release.toPandas()
 
-#Importing libraries that might be necessary
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from plotnine import *
-from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
-from sklearn.impute import SimpleImputer
-from sklearn import metrics
-from sklearn.metrics import accuracy_score
-from sklearn.linear_model import LogisticRegression
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import BaggingClassifier
-from sklearn.metrics import f1_score
-
 #Merging the two data frames based on the movie_title column as this will be necessary for our prediction
 #Checking the first few rows to see the effect of the merge
 df = pd.merge(pre_df, after_df, how='inner', on='movie_title')
-df.head()
-
-#Checking the size of the dataset (number of rows and number of columns)
-df.shape
-
-
-#Checking the data type of the features in the dataset
-df.info()
-
-
-#Checking basic statistical characteristics of each numerical feature in a dataset
-df.describe()
-
-
-#Investigating the number of unique values. In this case this is more interesting to observe the categorical variables 
-df.nunique()
-
-
-# ## Data Cleaning
-
-# In this section I will be cleaning the data.
-
-#Check the number of missing values for each column
-df.isnull().sum()
-
-
-#Replacing all the NaN values regarding the facebook likes and critic reviews with the value 0
-df[["actor_1_facebook_likes",
-    "actor_2_facebook_likes", "actor_3_facebook_likes", "num_critic_for_reviews"]] = df[[
-    "actor_1_facebook_likes","actor_2_facebook_likes", "actor_3_facebook_likes", "num_critic_for_reviews"]].fillna(0)
-
-
-#Creating a list of categorical and numerical features
-cat = df.select_dtypes(include = "object").columns.tolist()
-num = df.select_dtypes(include = "float64").columns.tolist()
-
-
-#Replacing the NaN values for the language for the most commun categorical value
-cat_imputer = SimpleImputer(strategy = "most_frequent")
-cat_imputer.fit(df[["language"]])
-df[["language"]] = cat_imputer.transform(df[["language"]])
-
-
-#Replacing the NaN values for the content_rating for the most commun categorical value
-cat_imputer = SimpleImputer(strategy = "most_frequent")
-cat_imputer.fit(df[["content_rating"]])
-df[["content_rating"]] = cat_imputer.transform(df[["content_rating"]])
-
-
-#Check the number of missing values for each column
-df.isnull().sum()
-
-
-#Removing the rows with the remaining missing values (actor names) as this will only remove less than 1% of the data
+df.head(5)
+# we drop the variables we don't need
+df = df.drop(columns = ["gross","num_critic_for_reviews","num_voted_users",
+                       "num_user_for_reviews","movie_facebook_likes","director_name","actor_1_name","actor_2_name",
+                        "actor_3_name","movie_title","actor_1_facebook_likes","actor_2_facebook_likes",
+                        "actor_3_facebook_likes"])
+# drop content rating
+df = df.drop("content_rating", axis='columns')
+# we delete all rows with missing values
 df = df.dropna()
-
-
-#Final check to confirm that all null values were successfully removed
-df.isnull().sum()
-
-
-#Checking if there are any duplicated rows in the dataset
-
-df[df.duplicated() == True]
-
-
-#Removing the duplicates from the dataset
-df.drop_duplicates(inplace = True)
-
-#Checking if successfully removed all duplicates
-print(df[df.duplicated() == True].shape[0])
-
-
-#Checking the new shape of the dataset 
 df.shape
+# we delete the duplicates and immediately update the dataframe
+df.drop_duplicates(inplace = True)
+df.shape
+# we see that the 22 duplicates have been removed since the number of observations decreased to 1044.
+# we now replace all languages that are not English, French or Spanish with 'other language'
+vals = df["language"].value_counts()[:3].index
+print (vals)
+df['language'] = df.language.where(df.language.isin(vals), 'other_language')
+# we use the OneHotEncoder function to encode the language variable into dummies
+# we turn language into dummies and check if it worked
+ohe = OneHotEncoder()
+df_1 = ohe.fit_transform(df[['language']])
+df[ohe.categories_[0]] = df_1.toarray()
+df.tail(10)
+# we repeat this process for country
+vals = df["country"].value_counts()[:6].index
+print (vals)
+df['country'] = df.country.where(df.country.isin(vals), 'other_country')
+# we use OneHotEncoder again
+ohe = OneHotEncoder()
+df_2 = ohe.fit_transform(df[['country']])
+df[ohe.categories_[0]] = df_2.toarray()
+df.tail(10)
+# we extract dummies from the genres column, by separating different string first, then we combine the newly
+# created dummies and concatenate them with original dataset
+df_dumm = df['genres'].str.get_dummies(sep = '|')
+comb = [df, df_dumm]
+df = pd.concat(comb, axis = 1)
+# sum all genres except for the most common ones
+df["other_genres"] = df["Animation"]+df["Biography"]+df["Documentary"]+df["Film-Noir"]
++df["History"]+df["Music"]+df["Musical"]+df["Mystery"]+df["Sci-Fi"]+df["Short"]
++df["Sport"]+df["War"]+df["Western"]
+# now we replace their values by 1
+df=df.replace(2,1)
+df=df.replace(3,1)
+# now we can delete the non-common genres
+df = df.drop(columns = ["Animation","Biography","Documentary","Film-Noir","History","Music",
+             "Musical","Mystery","Sci-Fi","Short","Sport","War","Western"])
+df = df.drop(columns=["genres","language","country"])
+# But before we can start building models, we first have to extract the target variable and 
+# the explanatory variables
+# for multicollinearity reasons, we also drop the country variables, as they might be correlated with language.
+x = df.drop(columns = ["imdb_score","USA","UK","France","Canada","Germany","Australia","other_country"])
+y = df["imdb_score"]
+X_train,X_test,y_train,y_test = train_test_split(x, y, test_size = 0.25,
+                                                 random_state=42)
+
+print(X_train.shape)
+print(X_test.shape)
+def accuracy_cont(Y_actual,Y_Predicted):
+    mape = np.mean(np.abs((Y_actual - Y_Predicted)/Y_actual))
+    accuracy = 1-mape
+    return accuracy
+# train model
+rf = RandomForestRegressor(max_depth=10, min_samples_leaf =1, random_state=0)
+rf.fit(X_train, y_train)
+#predict regression forest 
+array_pred = np.round(rf.predict(X_test),0)
+#add prediction to data frame
+y_pred = pd.DataFrame({"y_pred": array_pred},index=X_test.index)
+val_pred = pd.concat([y_test,y_pred,X_test],axis=1)
+val_pred
+#Evaluate model
+#by comparing actual and predicted value 
+act_value = val_pred["imdb_score"]
+pred_value = val_pred["y_pred"]
 
 
-#Checking the count for all values under the content_rating column
-rating_counts = df["content_rating"].value_counts()
-print(rating_counts)
+#Get datatype
+pred_value.dtype
 
 
-#Creating a new content_rating value called "other" to assign the values with a count <= 30
-r_vals = rating_counts[:3].index
-print (r_vals)
-df["content_rating"] = df.content_rating.where(df.content_rating.isin(r_vals), "other")
-
-
-#Checking if it worked
-df["content_rating"].value_counts()
-
-
-#Checking the count for all values under the country column
-country_counts = df["country"].value_counts()
-print(country_counts)
-
-
-#Creating a new country value called "other" to assign the values with a count =< 40
-c_vals = country_counts[:2].index
-print (c_vals)
-df['country'] = df.country.where(df.country.isin(c_vals), "other")
-
-
-#Checking if it worked
-df["country"].value_counts()
-
-
-#Checking the count for all values under the language column
-language_counts = df["language"].value_counts()
-print(language_counts)
-
-
-#Considering that only 8.6% of movies are not in English I will drop the language column
-#As this shouldn't add any additional value to our model
-df.drop('language', inplace=True, axis=1)
-
-
-#Checking the genres value counts
-df["genres"].value_counts()
-
-
-#As the genres seem to be equally distributed I will be dropping this column
-df.drop("genres", inplace=True, axis=1)
-
-
-#Removing the columns with the actor and director names, as well as movie title since these won't be used
-df = df.drop(["actor_1_name", "actor_2_name", "actor_3_name", "director_name", "movie_title"], axis=1)
-
-#Removing the other features from the after_release.csv as these won't be used to predict the target variable chosen
-df = df.drop(["num_critic_for_reviews", "gross", "num_voted_users", "num_user_for_reviews", "movie_facebook_likes"], axis=1)
-
-
-#Binning the IMDB scores as 0-2,2-4,4-6,6-8,8-10 to classify them accordingly as Very Bad
-#Bad, Average, Good, Very Good. This will be my target variable and I will be using Classification models.
-df["imdb_score_binned"]= pd.cut(df["imdb_score"], bins=[0,4,6,8,10], right=True, labels=False)+1
-
-#Verifying the applied changes by looking into the first 10 rows 
-df.head(10)
-
-
-#Checking the value counts across the different bins created
-df["imdb_score_binned"].value_counts()
-
-#Removing the actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes columns they are all correlated
-#between eachother and also highly correlated with the cast_total_facebook_likes
-df = df.drop(['actor_2_facebook_likes', "actor_3_facebook_likes", "actor_1_facebook_likes"], axis=1)
-
-
-#Getting the dummies for the columns country and content_rating
-df = pd.get_dummies(df, prefix=["content_rating", "country"], columns=["content_rating", "country"], drop_first = False)
-
-
-#Checking if it worked by getting all the columns in our dataframe
-df.columns
-
-
-# #### Splitting data into traning and test
-
-#Making the split between the data that we need to train our model and the target variable that will be trying to 
-#predict. I also trying to use stratify = y to better balance the data, but obtained better results by doing so 
-#during the fitting for each model
-X=pd.DataFrame(columns=["duration","director_facebook_likes","cast_total_facebook_likes","budget","content_rating_PG","content_rating_PG-13","content_rating_R","content_rating_other","country_UK","country_USA","country_other"],data = df)
-y=pd.DataFrame(columns=["imdb_score_binned"],data = df)
-from sklearn.model_selection import train_test_split
-#Randomly split into training (70%) and val (30%) sample with a random state of 100. I found this to be the combination
-#That gave me the best results across all models
-X_train, X_test, y_train, y_test=train_test_split(X,y,test_size=0.3,random_state=100)
-
-
-# As it can be seen above in the value counts and Violin plot for the IMDB binned scores, there are very few values within the bins 1, 2 and 5 in comparison to the others. In order to improve this, and to avoid problems later on with the models, I will be adjusting the weights for the classes for all of the models by using the class_weight parameter. In addition, instead of a RandomForestClassifier I also decided to use a BalancedRandomForestClassifier to make my results my realistic.
-
-# #### Scaling the features
-
-#Scaling our features
-sc_X = StandardScaler()
-X_train = sc_X.fit_transform(X_train)
-X_test = sc_X.transform(X_test)
-
-
-# # Classification Models
-
-# ### Decision Tree
-
-#Decision Tree to predict Binned IMDB scores
-dt = DecisionTreeClassifier(criterion="entropy", class_weight = "balanced") 
-# Train the model on training data
-dt.fit(X_train, np.ravel(y_train,order="C"))
-#Make predictions of test
-dt_pred = dt.predict(X_test)
-
-print("The accuracy of the model is:",accuracy_score(y_test,dt_pred))
-
+#Get val_pred
+val_pred
 
 
 #Step 4
-pred_values = spark.createDataFrame(dt_pred)
+pred_values = spark.createDataFrame(val_pred)
 
-#Step 5
-
-df.write.json("s3a://dmacademy-course-assets/vlerick/diogo")
+#Step 5 
+df.write.json(f"s3a://{BUCKET}/vlerick/diogo_forneas/", mode="overwrite")
