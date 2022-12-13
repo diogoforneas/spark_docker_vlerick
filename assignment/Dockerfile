@@ -1,4 +1,9 @@
-FROM python:3.9.12
+FROM python:3.10.4
+
+RUN apt-get update && \
+    apt-get install -y default-jdk && \
+    apt-get install -y ant && \
+    apt-get clean;
 
 #Create non-root user
 RUN useradd -ms /bin/bash python-api
