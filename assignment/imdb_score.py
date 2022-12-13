@@ -128,4 +128,4 @@ val_pred
 pred_values = spark.createDataFrame(val_pred)
 
 #Step 5 
-pred_values.write.json(f"s3a://{BUCKET}/vlerick/diogoforneas/predictions.json", mode="overwrite")
+pred_values.write.json(f"s3a://{BUCKET}/vlerick/diogoforneas/", mode="overwrite")
