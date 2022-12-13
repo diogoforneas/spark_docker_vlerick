@@ -8,17 +8,23 @@ from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score
 import numpy as np
 import os
 
-print(os.environ["AWS_SECRET_ACCESS_KEY"])
-print('='*80)
-
 BUCKET = "dmacademy-course-assets"
 KEY_pre = "vlerick/pre_release.csv"
 KEY_after = "vlerick/after_release.csv"
 
-config = {
-    "spark.jars.packages": "org.apache.hadoop:hadoop-aws:3.3.1",
-    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
-}
+if 'AWS_SECRET_ACCESS_KEY' in os.environ:
+    print("Credentials were found in this environment")
+    config = {
+        "spark.jars.packages": "org.apache.hadoop:hadoop-aws:3.3.1",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+    }
+else:
+    print("There were no credentials found in this environment")
+    config = {
+        "spark.jars.packages": "org.apache.hadoop:hadoop-aws:3.3.1",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.InstanceProfileCredentialsProvider",
+    }
+
 conf = SparkConf().setAll(config.items())
 spark = SparkSession.builder.config(conf=conf).getOrCreate()
 
